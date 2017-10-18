@@ -30,6 +30,9 @@ for(fn in filelist) {
   datamor <- rbind(datamor,temp)
 }
 
+
+
+
 datamor['CUID'] <- sapply(datamor$NEWID,function(x) substr(as.character(x),1,(nchar(as.character(x))-1)))
 datamor['year'] <- floor(datamor$QYEAR/10)
 
@@ -77,8 +80,12 @@ datamor$mor_filename <- NULL
 
 datamor$CUID <- as.numeric(datamor$CUID)
 
-names(datamor) <- c("mtg_pmt_reported_mor","interest_rate_cur","interest_rate_org","mtg_amount","mtg_outstanding_cur","refinanced",
-                    "NEWID","QYEAR","CUID","interview_year","mtg_pmt_calc_mor","first_payment_date")
+# names(datamor) <- c("mtg_pmt_reported_mor","interest_rate_cur","interest_rate_org","mtg_amount","mtg_outstanding_cur","refinanced",
+#                     "NEWID","QYEAR","CUID","interview_year","mtg_pmt_calc_mor","first_payment_date")
+
+datamor <- rename(datamor,c("MRTPMTX"="mtg_pmt_reported_mor","NEWMRRT"="interest_rate_cur","OLDMRRT"="interest_rate_org","ORGMRTX"="mtg_amount",
+                            "QBLNCM1X"="mtg_outstanding_cur","REFINED"="refinanced","NEWID"="NEWID","QYEAR"="QYEAR","CUID"="CUID","year"="interview_year",
+                            "calc_mtg_pmt"="mtg_pmt_calc_mor","first_payment_date"="first_payment_date"))
 datamor$QYEAR <- NULL
 datamor$refinanced <- NULL
 rm(temp,filelist,mor_keep_names,m,fn,missing)
@@ -110,7 +117,10 @@ fmli <- list.files(path=paste(path,"/Data/Raw/fmli",sep=""),pattern = "*.csv",fu
 # fmli_keep_names <- c("NEWID"  , "TOTEXPCQ",  "STATE" ,"CUID")
 fmli_keep_names <- c("NEWID"  , "TOTEXPCQ",  "STATE" ,"CUID","AGE_REF","BLS_URBN","BEDROOMQ","BUILT","CKBKACTX","CUINCOME","EARNINCX",
                      "ECARTKNC","ECARTKUC","EHOUSNGC","ENTERTCQ","ETOTALC","FAM_SIZE","FAM_TYPE","FDAWAYCQ","FDXMAPPQ","FINCATAX",
-                     "FOODCQ","JFDSTMPA", "LOT_SIZE","MAJAPPCQ","NUM_AUTO","NUM_TVAN","ORIGIN1","REF_RACE","SAVACCTX","SMSASTAT")
+                     "FOODCQ","JFDSTMPA", "LOT_SIZE","MAJAPPCQ","NUM_AUTO","NUM_TVAN","ORIGIN1","REF_RACE","SAVACCTX","SMSASTAT",
+                     "BATHRMQ","CARTKNCQ","CARTKUCQ","EMRTPNOC","EOTHENTC","EOWNDWLC","ERANKMTH","ETOTACX4","ETRANPTC",
+                     "EVEHPURC","FINCBTAX","HLTHINCQ","HOUSEQCQ","INCLASS","INC_HRS1","INC_HRS2","MAINRPCQ","NO_EARNR","POV_CY","SECESTX",
+                     "SMLAPPCQ","TVRDIOCQ","UTILCQ","VEHQ")
 datafmli <- NULL
 for(fn in fmli) {
   print(fn)
@@ -132,116 +142,159 @@ for(fn in fmli) {
 datafmli <- datafmli[!is.na(datafmli$NEWID),]
 
 # names(datafmli) <- c("NEWID","state","total_exp","CUID")
-names(datafmli) <- c("NEWID","origin","state","lot_size","no_of_bedrooms","built_year","savingsaccount","checkingaccount","cu_income",
-                     "family_size","family_type","no_of_cars","no_of_trucks","race","age_of_ref","family_earnings","family_earnings_aftertax",
-                     "urban","msa","food_stamp_value","appliances","food_away_home","new_vehicle_outlay","used_vehicle_outlay",
-                     "food_away_home_all","entertainment","food_exp","total_exp","housing_exp","all_major_outlays","CUID")
+# names(datafmli) <- c("NEWID","origin","state","lot_size","no_of_bedrooms","built_year","savingsaccount","checkingaccount","cu_income",
+#                      "family_size","family_type","no_of_cars","no_of_trucks","race","age_of_ref","family_earnings","family_earnings_aftertax",
+#                      "urban","msa","food_stamp_value","appliances","food_away_home","new_vehicle_outlay","used_vehicle_outlay",
+#                      "food_away_home_all","entertainment","food_exp","total_exp","housing_exp","all_major_outlays","CUID")
+
+datafmli <- rename(datafmli,c("NEWID"="NEWID","AGE_REF"="age_of_ref","BEDROOMQ"="no_of_bedrooms","BLS_URBN"="urban","BUILT"="built_year",
+                              "CKBKACTX"="checkingaccount","FINCBTAX"="earnings_before_tax_family","FAM_SIZE"="family_size","FAM_TYPE"="family_type",
+                              "FINCATAX"="earnings_after_tax_family","JFDSTMPA"="food_stamp_value","LOT_SIZE"="lot_size","NUM_AUTO"="no_of_cars",
+                              "ORIGIN1"="origin","REF_RACE"="race","SAVACCTX"="savingsaccount","SMSASTAT"="msa","TOTEXPCQ"="total_exp",
+                              "FOODCQ"="food_exp","FDAWAYCQ"="food_away","FDXMAPPQ"="food_away_x","MAJAPPCQ"="major_appliances","ENTERTCQ"="entertainment_exp",
+                              "STATE"="state","CUINCOME"="cu_income","NUM_TVAN"="no_of_trucks","ECARTKNC"="new_vehicle_outlay","ECARTKUC"="used_vehicle_outlay",
+                              "EHOUSNGC"="housing_outlays","ETOTALC"="all_major_outlays","ETOTACX4"="all_major_outlays_adj","CUID"="CUID","BATHRMQ"="no_of_baths",
+                              "CARTKNCQ"="new_vehicle_outlay2","CARTKUCQ"="used_vehicle_outlay2","EMRTPNOC"="mtg_principal_outlay",
+                              "EOTHENTC"="outlays_entertainment_equip","EOWNDWLC"="mtg_ins_proptax_maintainance_etc","ERANKMTH"="tot_exp_outlays",
+                              "ETRANPTC"="transport_outlays","EVEHPURC"="vehicle_purchase_outlay","HLTHINCQ"="health_insurance",
+                              "HOUSEQCQ"="house_furnishings_and_equip","INCLASS"="income_class","INC_HRS1"="hours_worked_ref","INC_HRS2"="hours_worked_spouse",
+                              "MAINRPCQ"="maintainance_repairs","NO_EARNR"="no_of_income_earners","POV_CY"="below_poverty_line",
+                              "SECESTX"="investments","SMLAPPCQ"="small_appliances","TVRDIOCQ"="tv_radio_etc","UTILCQ"="utility_exp",
+                              "VEHQ" = "total_no_of_vehicles"))
+
 
 datafmli['CUID'] <- ifelse(is.na(datafmli$CUID),substr(as.character(datafmli$NEWID),1,nchar((as.character(datafmli$NEWID)))-1),datafmli$CUID)
 datafmli <- datafmli[!duplicated(datafmli$NEWID),]
 
 datafmli <- data.table(datafmli)
 
-datafmli_summary <- datafmli[,list(state=min(state,na.rm = TRUE),
-                                   total_exp = mean(total_exp,na.rm = TRUE))
-                             ,by=list(CUID)]
 
-datafmli_summary$CUID <- as.numeric(datafmli_summary$CUID)
-datafmli_summary <- as.data.frame(datafmli_summary)
-datafmli_summary$CUID <- as.numeric(datafmli_summary$CUID)
+# datafmli_summary <- datafmli[,list(state=min(state,na.rm = TRUE),
+#                                    total_exp = mean(total_exp,na.rm = TRUE),
+#                                    housing_exp = mean(housing_exp,na.rm = TRUE),
+#                                    all_major_outlays = mean(all_major_outlays,na.rm = TRUE),
+#                                    food_exp = mean(food_exp,na.rm = TRUE),
+#                                    entertainment = mean(entertainment,na.rm = TRUE),
+#                                    cu_income = mean(cu_income,na.rm = TRUE),
+#                                    family_size = mean(family_size,na.rm = TRUE))    
+#                              ,by=list(CUID)]
+# 
+# 
+# datafmli_summary$CUID <- as.numeric(datafmli_summary$CUID)
+# datafmli_summary <- as.data.frame(datafmli_summary)
+# datafmli_summary$CUID <- as.numeric(datafmli_summary$CUID)
+
 datafmli <- as.data.frame(datafmli)
 
-datafmli['no_of_vehicles'] <- datafmli$no_of_cars+datafmli$no_of_trucks
 datafmli$food_stamp_value <- as.numeric(datafmli$food_stamp_value)
-# datafmli <- datafmli[,c("NEWID","CUID","state","total_exp")]
-
-# OPB ---------------------------------------------------------------------
-# 
-# 
-# filelist <- list.files(path=paste(path,"/Data/Raw/opb",sep=""),pattern = "*.csv",full.names = TRUE)
-# opb_keep_names <- c("NEWID"  ,"OWNDPMTX", "OWN_PURX","QYEAR","ACQUIRYR","ACQUIRMO","ACQMETH","OWNYB","PROPTYPE","PROPVALX","PROP_NOB")
-# 
-# dataopb <- NULL
-# for(fn in filelist) {
-#   print(fn)
-#   temp <- read.csv(fn, stringsAsFactors = FALSE,header = TRUE)
-#   temp <- temp[,names(temp) %in% opb_keep_names]
-#   mor_keep_names <- names(temp)
-#   missing <- which(!names(dataopb) %in% names(temp))
-#   for(m in missing) {
-#     temp[names(dataopb)[m]] <- NA
-#   }
-#   extra <- which(!names(temp) %in% names(dataopb))
-#   for(e in extra) {
-#     dataopb[names(temp)[e]] <- NA
-#   }
-#   dataopb <- rbind(dataopb,temp)
-# }
-# 
-# dataopb <- dataopb[dataopb$OWNYB==100 & dataopb$PROP_NOB==1 & dataopb$PROPTYPE==3,]
-# dataopb <- dataopb[!is.na(dataopb$NEWID),]
-# 
-# dataopb <- data.table(dataopb)
-# dataopb_summary <- dataopb[,list(acq_year=sd(ACQUIRYR,na.rm=TRUE)),by=list(NEWID)]
-# dataopb_summary <- dataopb_summary[dataopb_summary$acq_year==0,]
-# 
-# dataopb <- as.data.frame(dataopb)
-# dataopb <- dataopb[dataopb$NEWID %in% dataopb_summary$NEWID,]
-# rm(dataopb_summary)
-# dataopb <- dataopb[!duplicated(dataopb$NEWID),]
-# 
-
+datafmli$hours_worked_ref <- as.numeric(datafmli$hours_worked_ref)
+datafmli$hours_worked_spouse <- as.numeric(datafmli$hours_worked_spouse)
+datafmli$no_of_bedrooms <- as.numeric(datafmli$no_of_bedrooms)
+datafmli$no_of_baths <- as.numeric(datafmli$no_of_baths)
+datafmli$savingsaccount <- as.numeric(datafmli$savingsaccount)
+datafmli$checkingaccount <- as.numeric(datafmli$checkingaccount)
+datafmli$investments <- as.numeric(datafmli$investments)
 
 
 # MERGE -------------------------------------------------------------------
 
-merged_data <- datamor[datamor$interview_year-datamor$org_year<=1,]
+no_of_years  = 2
+
+merged_data <- datamor[datamor$interview_year-datamor$org_year<=no_of_years,]
 merged_data['mpay_mtg'] <- merged_data$mtg_pmt_calc_mor/merged_data$mtg_amount
 merged_data$CUID <- NULL
 # 
-# dataopb <- dataopb[dataopb$NEWID %in% merged_data$NEWID,]
-# dataopb <- dataopb[,c("NEWID","ACQUIRYR")]
-# merged_data <- merge(merged_data,dataopb,by="NEWID",all.x = TRUE)
+
 
 merged_data <- merge(merged_data,datafmli[,c("NEWID","CUID")],by="NEWID",all.x = TRUE)
 merged_data <- merge(merged_data,datafmli,by="CUID",all.x = TRUE)
 merged_data['org_state'] <- paste(merged_data$org_year,merged_data$state)
 merged_data['interview_state'] <- paste(merged_data$interview_year,merged_data$state)
-summary(felm(interest_rate_cur~mtg30us|org_year,data=merged_data))
 
 
-# REGRESSIONS -------------------------------------------------------------
+# REGRESSIONS Q Level-------------------------------------------------------------
 
-
-merged_data['total_exp_less_housing_exp'] <- merged_data$total_exp - merged_data$housing_exp
-merged_data['major_outlays_less_housing_exp'] <- merged_data$all_major_outlays-merged_data$housing_exp
-# merged_data['food'] <- merged_data$food_exp
-# # merged_data['exp'] <- merged_data$entertainment
 merged_data <- merged_data[merged_data$interest_rate_cur==merged_data$interest_rate_org,]
 
 merged_data <- merged_data[!is.na(merged_data$NEWID.x),]
-# merged_data <- merged_data[merged_data$exp >0,]
-# merged_data$exp <- merged_data$exp/merged_data$family_size
+
+dependent_var = "I(log(total_exp))"
+endo_var = "mpay_mtg"
+instrument = "mtg30us"
+cluster_var = "interview_year+state+CUID"
+
+controls <- "log(income_class)+family_size+I(age_of_ref^2)|org_state+interview_state+urban+msa+race"
+
+merged_data$vehicle_purchase_outlay <- merged_data$vehicle_purchase_outlay+1
+merged_data$outlays_entertainment_equip <- merged_data$outlays_entertainment_equip+1
+merged_data$house_furnishings_and_equip <- merged_data$house_furnishings_and_equip+1
+merged_data$small_appliances <- merged_data$small_appliances+1
+merged_data$major_appliances <- merged_data$major_appliances+1
+merged_data$income_class <- merged_data$income_class*8000
+
+
+merged_data <- merged_data[merged_data$total_exp>0 & merged_data$hours_worked_ref>0,]
+
+regs <- list()
+regs[[1]] <- felm(as.formula(paste(dependent_var,"~",endo_var,"+",controls,"|0|",cluster_var,sep="")),data = merged_data[merged_data$total_exp>0,])
+regs[[2]] <- felm(as.formula(paste(endo_var,"~",instrument,"+",controls,"|0|",cluster_var,sep="")),data = merged_data[merged_data$total_exp>0,])
+regs[[3]] <- felm(as.formula(paste(dependent_var,"~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = merged_data[merged_data$total_exp>0,])
+regs[[4]] <- felm(as.formula(paste("log(all_major_outlays_adj)~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = merged_data[merged_data$all_major_outlays_adj>0,])
+regs[[5]] <- felm(as.formula(paste("log(food_exp)~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = merged_data[merged_data$food_exp>0,])
+regs[[6]] <- felm(as.formula(paste("log(entertainment_exp)~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = merged_data[merged_data$entertainment_exp>0,])
+regs[[7]] <- felm(as.formula(paste("log(vehicle_purchase_outlay)~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = merged_data[merged_data$vehicle_purchase_outlay>0,])
+regs[[8]] <- felm(as.formula(paste("log(outlays_entertainment_equip)~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = merged_data[merged_data$outlays_entertainment_equip>0,])
+regs[[9]] <- felm(as.formula(paste("log(house_furnishings_and_equip)~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = merged_data[merged_data$house_furnishings_and_equip>0,])
+regs[[10]] <- felm(as.formula(paste("log(small_appliances)~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = merged_data[merged_data$small_appliances>0,])
+regs[[11]] <- felm(as.formula(paste("log(tot_exp_outlays)~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = merged_data[merged_data$tot_exp_outlays>0,])
+regs[[12]] <- felm(as.formula(paste("log(major_appliances)~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = merged_data[merged_data$major_appliances>0,])
+
+
+stargazer(regs,type="text",dep.var.labels.include = FALSE,omit.stat = c("f","rsq","ser"),
+          add.lines = list(c("Cond. F","","",round(condfstat(regs[[3]])[[1]],2),round(condfstat(regs[[4]])[[1]],2)
+                             ,round(condfstat(regs[[5]])[[1]],2),round(condfstat(regs[[6]])[[1]],2))))
+
+
+
+# REGRESSIONS CUID Level-------------------------------------------------------------
+
+
+
+merged_data_aggregate <- datamor[datamor$interview_year-datamor$org_year<=no_of_years,]
+merged_data_aggregate['mpay_mtg'] <- merged_data_aggregate$mtg_pmt_calc_mor/merged_data_aggregate$mtg_amount
+merged_data_aggregate$CUID <- as.numeric(merged_data_aggregate$CUID)
+
+merged_data_aggregate <- merge(merged_data_aggregate,datafmli_summary,by="CUID",all.x = TRUE)
+merged_data_aggregate['org_state'] <- paste(merged_data_aggregate$org_year,merged_data_aggregate$state)
+merged_data_aggregate['interview_state'] <- paste(merged_data_aggregate$interview_year,merged_data_aggregate$state)
+
+
+
+
+merged_data_aggregate['total_exp_less_housing_exp'] <- merged_data_aggregate$total_exp - merged_data_aggregate$housing_exp
+merged_data_aggregate['major_outlays_less_housing_exp'] <- merged_data_aggregate$all_major_outlays-merged_data_aggregate$housing_exp
+merged_data_aggregate <- merged_data_aggregate[merged_data_aggregate$interest_rate_cur==merged_data_aggregate$interest_rate_org,]
 
 dependent_var = "I(log(total_exp_less_housing_exp/family_size))"
 endo_var = "mpay_mtg"
 instrument = "mtg30us"
 cluster_var = "interview_year+state+CUID"
 
-controls <- "I(log(cu_income/family_size))|org_state+interview_state+urban+msa"
+controls <- "I(log(cu_income/family_size))|org_state+interview_state"
 
-
+# merged_data_aggregate$family_size <- 1
 
 regs <- list()
-regs[[1]] <- felm(as.formula(paste(dependent_var,"~",endo_var,"+",controls,"|0|",cluster_var,sep="")),data = merged_data[merged_data$total_exp_less_housing_exp>0,])
-regs[[2]] <- felm(as.formula(paste(endo_var,"~",instrument,"+",controls,"|0|",cluster_var,sep="")),data = merged_data[merged_data$total_exp_less_housing_exp>0,])
-regs[[3]] <- felm(as.formula(paste(dependent_var,"~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = merged_data[merged_data$total_exp_less_housing_exp>0,])
-regs[[4]] <- felm(as.formula(paste("I(log(major_outlays_less_housing_exp/family_size))~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = merged_data[merged_data$major_outlays_less_housing_exp>0,])
-regs[[5]] <- felm(as.formula(paste("I(log(food_exp/family_size))~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = merged_data[merged_data$food_exp>0,])
-regs[[6]] <- felm(as.formula(paste("I(log(entertainment/family_size))~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = merged_data[merged_data$entertainment>0,])
+regs[[1]] <- felm(as.formula(paste(dependent_var,"~",endo_var,"+",controls,"|0|",cluster_var,sep="")),data = merged_data_aggregate[merged_data_aggregate$total_exp_less_housing_exp>0,])
+regs[[2]] <- felm(as.formula(paste(endo_var,"~",instrument,"+",controls,"|0|",cluster_var,sep="")),data = merged_data_aggregate[merged_data_aggregate$total_exp_less_housing_exp>0,])
+regs[[3]] <- felm(as.formula(paste(dependent_var,"~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = merged_data_aggregate[merged_data_aggregate$total_exp_less_housing_exp>0,])
+regs[[4]] <- felm(as.formula(paste("I(log(major_outlays_less_housing_exp/family_size))~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = merged_data_aggregate[merged_data_aggregate$major_outlays_less_housing_exp>0,])
+regs[[5]] <- felm(as.formula(paste("I(log(food_exp/family_size))~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = merged_data_aggregate[merged_data_aggregate$food_exp>0,])
+regs[[6]] <- felm(as.formula(paste("I(log(entertainment/family_size))~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = merged_data_aggregate[merged_data_aggregate$entertainment>0,])
 
 
 stargazer(regs,type="text",dep.var.labels.include = FALSE,omit.stat = c("f","rsq","ser"),
           add.lines = list(c("Cond. F","","",round(condfstat(regs[[3]])[[1]],2),round(condfstat(regs[[4]])[[1]],2)
                              ,round(condfstat(regs[[5]])[[1]],2),round(condfstat(regs[[6]])[[1]],2))))
+
 
