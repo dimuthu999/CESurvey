@@ -67,7 +67,7 @@ library(stargazer)
 library(FinCal)
 output.type = "text"
 
-merged_data <- readRDS(file="E:/CE Survey/Data/Processed/merged_data_Oct262017.rds") # file created by 10252017_kevin_comments.R
+merged_data <- readRDS(file="E:/CE Survey/Data/Processed/merged_data_Oct272017.rds") # file created by 10252017_kevin_comments.R
 
 merged_data <- merged_data[merged_data$interest_rate_cur==merged_data$interest_rate_org,]
 
@@ -86,12 +86,21 @@ merged_data$income_class <- ifelse(merged_data$income_class==1,4000,
 merged_data <- merged_data[merged_data$total_exp>100 & merged_data$hours_worked_ref>0 & !is.na(merged_data$total_exp),]
 merged_data <- merged_data[merged_data$total_exp <= quantile(merged_data$total_exp,0.99,na.rm = TRUE) & merged_data$total_exp >= quantile(merged_data$total_exp,0.01,na.rm = TRUE),]
 
+
+merged_data['housing_exp_calc'] <- merged_data$major_appliances+merged_data$small_appliances + merged_data$maintainance_repairs+merged_data$house_furnishings_and_equip
+
+merged_data['non_durable'] <- merged_data$food_exp+ merged_data$entertainment_exp + merged_data$utility_exp + merged_data$transport_outlays - merged_data$vehicle_purchase_outlay + merged_data$apperel_and_services_exp+merged_data$miscellaneous_exp 
+
+merged_data['durable'] <- merged_data$major_appliances + merged_data$small_appliances + merged_data$vehicle_purchase_outlay
+
+merged_data['services'] <- merged_data$education_exp + merged_data$domestic_services + merged_data$health_exp
+
 ```
 
 # Descriptives
 ```{r descs}
 
-stargazer(merged_data[, c("mpay_mtg","calc_mtg_pmt","org_year","interview_year","income_class","family_size","age_of_ref","total_exp","total_exp_less_mtg","food_exp","all_major_outlays","entertainment_exp","vehicle_purchase_outlay","major_appliances","small_appliances","house_furnishings_and_equip","maintainance_repairs","utility_exp")], type = output.type, summary.stat = c("mean", "sd", "p25", "median", "p75", "n"),notes = "",digits = 4)
+stargazer(merged_data[, c("mpay_mtg","calc_mtg_pmt","non_durable","services","durable","org_year","interview_year","income_class","family_size","age_of_ref","total_exp","total_exp_less_mtg","food_exp","all_major_outlays","entertainment_exp","vehicle_purchase_outlay","major_appliances","small_appliances","house_furnishings_and_equip","maintainance_repairs","utility_exp")], type = output.type, summary.stat = c("mean", "sd", "p25", "median", "p75", "n"),notes = "",digits = 4)
 ```
 
 # Balancing Tests
@@ -110,8 +119,14 @@ for(variable in variables) {
 stargazer(felm_regs,type = output.type,no.space = TRUE,column.labels = gsub("_","",variables))
 ```
 
-# Consumption Regressions
-```{r regs}
+
+# Consumption Regressions - Main Categories
+
+Non-durable: food + entertainment + utility + transport + apperal <br/>
+Durable : Major appliances + small appliances + vehicle purchase outlays <br/>
+Services: Education + Domestic Services + Health <br/>
+housing_exp_calc : major_appliances+small_appliances + maintainance_repairs+house_furnishings_and_equip<br/>
+```{r regs_main_cats}
 endo_var = "mpay_mtg"
 instrument = "mtg30us"
 cluster_var = "interview_year+state+CUID"
@@ -119,8 +134,56 @@ cluster_var = "interview_year+state+CUID"
 controls <- "log(income_class)+family_size+I(age_of_ref^2)|org_state+interview_state"
 
 
-dep_vars <- c("total_exp","total_exp_less_mtg","food_exp","all_major_outlays","entertainment_exp","vehicle_purchase_outlay","major_appliances","small_appliances",
-              "house_furnishings_and_equip","maintainance_repairs","utility_exp")
+
+dep_vars <- c("non_durable","durable","services","housing_exp_calc","total_exp")#,"food_exp","all_major_outlays","entertainment_exp","transport_outlays","vehicle_purchase_outlay","major_appliances","small_appliances","house_furnishings_and_equip","maintainance_repairs","utility_exp")
+
+
+for(dep_var in dep_vars) {
+  cat(paste("\n\n\n*******************",dep_var,"*********************\n\n\nSummary Statistics\n"))
+  reg_data <- merged_data
+  eval(parse(text=paste("reg_data$",dep_var," <- reg_data$",dep_var,"+1",sep="")))
+  eval(parse(text=paste("reg_data$",dep_var," <- ifelse(is.na(reg_data$",dep_var,"),1,reg_data$",dep_var,")",sep="")))
+  eval(parse(text=paste("reg_data['",dep_var,"_dummy'] <- ifelse(reg_data$",dep_var,">1,1,0)",sep="")))
+  
+  log_dep_var = paste("log(",dep_var,")",sep="")
+  dummy_dep_var = paste(dep_var,"_dummy",sep="")
+  
+  if(dep_var %in% c("total_exp_less_mtg")) {
+    eval(parse(text=paste("reg_data <- reg_data[reg_data$",dep_var,">1,]",sep="")))
+  }
+
+  regs <- list()
+  regs[[1]] <- felm(as.formula(paste(log_dep_var,"~",endo_var,"+",controls,"|0|",cluster_var,sep="")),data = reg_data)
+  regs[[2]] <- felm(as.formula(paste(endo_var,"~",instrument,"+",controls,"|0|",cluster_var,sep="")),data = reg_data)
+  regs[[3]] <- felm(as.formula(paste(log_dep_var,"~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = reg_data)
+  regs[[4]] <- felm(as.formula(paste(dep_var,"~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = reg_data)
+  regs[[5]] <- felm(as.formula(paste(dummy_dep_var,"~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = reg_data)
+  
+
+  eval(parse(text=paste("print(summary(reg_data$",dep_var,"-1))",sep="")))
+
+  
+  stargazer(regs,type="text",dep.var.labels.include = FALSE,omit.stat = c("f","rsq","ser"),
+            column.labels = c("Log","First Stage","Log","Level","Dummy"),
+            add.lines = list(c("Cond. F","","",round(condfstat(regs[[3]])[[1]],2),round(condfstat(regs[[4]])[[1]],2)
+                               ,round(condfstat(regs[[5]])[[1]],2))),title = gsub("_"," ",dep_var))
+  
+}
+
+```
+
+
+# Consumption Regressions - Sub Categories
+```{r regs_sub_cats}
+endo_var = "mpay_mtg"
+instrument = "mtg30us"
+cluster_var = "interview_year+state+CUID"
+
+controls <- "log(income_class)+family_size+I(age_of_ref^2)|org_state+interview_state"
+
+
+dep_vars <- c("food_exp","entertainment_exp","utility_exp","transport_outlays","apperel_and_services_exp","major_appliances","small_appliances","vehicle_purchase_outlay","education_exp","domestic_services","health_exp")
+
 
 for(dep_var in dep_vars) {
   cat(paste("\n\n\n*******************",dep_var,"*********************\n\n\nSummary Statistics\n"))
