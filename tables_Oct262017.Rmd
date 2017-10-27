@@ -1,0 +1,158 @@
+---
+title: "Mortgage Payment Size and Consumption"
+output: 
+  html_document: 
+    fig_height: 6
+    fig_width: 12
+    toc: yes
+    number_section: yes
+---
+
+<style type="text/css">
+body{ 
+      font-size: 15px;
+      font-family: Helvetica,Arial,sans-serif;
+      line-height: 200%;
+  }
+  
+.author {
+ font-size: 15px;
+ color: Black;
+ font-style: normal;
+ text-align: center;
+}
+
+
+.date { 
+ font-size: 15px;
+ color: Black;
+ font-style: normal;
+ text-align: center;
+}
+
+.title{
+  text-align: center;
+  font-size: 15px;
+ color: Black;
+ 
+}
+
+.toc-ignore{
+  text-align: center;
+  font-size: 15px;
+ color: Black;
+}
+
+.fluid-row{
+  text-align: center;
+  font-size: 15px;
+ color: Black;
+}
+
+</style>
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(warning=FALSE, message=FALSE,echo=FALSE)
+```
+
+```{r echo=FALSE}
+rm(list=ls())
+
+
+library(data.table)
+library(lubridate)
+library(lfe)
+library(plyr)
+library(stargazer)
+library(FinCal)
+output.type = "text"
+
+merged_data <- readRDS(file="E:/CE Survey/Data/Processed/merged_data_Oct262017.rds") # file created by 10252017_kevin_comments.R
+
+merged_data <- merged_data[merged_data$interest_rate_cur==merged_data$interest_rate_org,]
+
+merged_data <- merged_data[!is.na(merged_data$NEWID.x),]
+
+merged_data['total_exp_less_mtg'] <- merged_data$total_exp - merged_data$mtg_pmt_calc_mor*3
+
+
+
+merged_data$income_class <- ifelse(merged_data$income_class==1,4000,
+                                   ifelse(merged_data$income_class==2,8000,
+                                          ifelse(merged_data$income_class==3,12000,
+                                                 ifelse(merged_data$income_class==4,17000,
+                                                        merged_data$income_class*10000-25000))))
+
+merged_data <- merged_data[merged_data$total_exp>100 & merged_data$hours_worked_ref>0 & !is.na(merged_data$total_exp),]
+merged_data <- merged_data[merged_data$total_exp <= quantile(merged_data$total_exp,0.99,na.rm = TRUE) & merged_data$total_exp >= quantile(merged_data$total_exp,0.01,na.rm = TRUE),]
+
+```
+
+# Descriptives
+```{r descs}
+
+stargazer(merged_data[, c("mpay_mtg","calc_mtg_pmt","org_year","interview_year","income_class","family_size","age_of_ref","total_exp","total_exp_less_mtg","food_exp","all_major_outlays","entertainment_exp","vehicle_purchase_outlay","major_appliances","small_appliances","house_furnishings_and_equip","maintainance_repairs","utility_exp")], type = output.type, summary.stat = c("mean", "sd", "p25", "median", "p75", "n"),notes = "",digits = 4)
+```
+
+# Balancing Tests
+```{r balancing}
+formula_text <- "~0|org_state+interview_state|(mpay_mtg~mtg30us)|interview_year+CUID"
+
+variables <- c("log(income_class)","age_of_ref","family_size")
+i = 1
+felm_regs <- list()
+for(variable in variables) {
+  # print(i)
+  felm_regs[[i]] <- felm(as.formula(paste(variable,formula_text,sep="")),data=merged_data)
+  i=i+1
+}
+
+stargazer(felm_regs,type = output.type,no.space = TRUE,column.labels = gsub("_","",variables))
+```
+
+# Consumption Regressions
+```{r regs}
+endo_var = "mpay_mtg"
+instrument = "mtg30us"
+cluster_var = "interview_year+state+CUID"
+
+controls <- "log(income_class)+family_size+I(age_of_ref^2)|org_state+interview_state"
+
+
+dep_vars <- c("total_exp","total_exp_less_mtg","food_exp","all_major_outlays","entertainment_exp","vehicle_purchase_outlay","major_appliances","small_appliances",
+              "house_furnishings_and_equip","maintainance_repairs","utility_exp")
+
+for(dep_var in dep_vars) {
+  cat(paste("\n\n\n*******************",dep_var,"*********************\n\n\nSummary Statistics\n"))
+  reg_data <- merged_data
+  eval(parse(text=paste("reg_data$",dep_var," <- reg_data$",dep_var,"+1",sep="")))
+  eval(parse(text=paste("reg_data$",dep_var," <- ifelse(is.na(reg_data$",dep_var,"),1,reg_data$",dep_var,")",sep="")))
+  eval(parse(text=paste("reg_data['",dep_var,"_dummy'] <- ifelse(reg_data$",dep_var,">1,1,0)",sep="")))
+  
+  log_dep_var = paste("log(",dep_var,")",sep="")
+  dummy_dep_var = paste(dep_var,"_dummy",sep="")
+  
+  if(dep_var %in% c("total_exp_less_mtg")) {
+    eval(parse(text=paste("reg_data <- reg_data[reg_data$",dep_var,">1,]",sep="")))
+  }
+
+  regs <- list()
+  regs[[1]] <- felm(as.formula(paste(log_dep_var,"~",endo_var,"+",controls,"|0|",cluster_var,sep="")),data = reg_data)
+  regs[[2]] <- felm(as.formula(paste(endo_var,"~",instrument,"+",controls,"|0|",cluster_var,sep="")),data = reg_data)
+  regs[[3]] <- felm(as.formula(paste(log_dep_var,"~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = reg_data)
+  regs[[4]] <- felm(as.formula(paste(dep_var,"~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = reg_data)
+  regs[[5]] <- felm(as.formula(paste(dummy_dep_var,"~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = reg_data)
+  
+
+  eval(parse(text=paste("print(summary(reg_data$",dep_var,"-1))",sep="")))
+
+  
+  stargazer(regs,type="text",dep.var.labels.include = FALSE,omit.stat = c("f","rsq","ser"),
+            column.labels = c("Log","First Stage","Log","Level","Dummy"),
+            add.lines = list(c("Cond. F","","",round(condfstat(regs[[3]])[[1]],2),round(condfstat(regs[[4]])[[1]],2)
+                               ,round(condfstat(regs[[5]])[[1]],2))),title = gsub("_"," ",dep_var))
+  
+}
+
+```
+
