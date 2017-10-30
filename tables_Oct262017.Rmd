@@ -65,7 +65,13 @@ library(lfe)
 library(plyr)
 library(stargazer)
 library(FinCal)
+library(ggplot2)
 output.type = "text"
+
+completeFun <- function(data, desiredCols) {
+  completeVec <- complete.cases(data[, desiredCols])
+  return(data[completeVec, ])
+}
 
 merged_data <- readRDS(file="E:/CE Survey/Data/Processed/merged_data_Oct272017.rds") # file created by 10252017_kevin_comments.R
 
@@ -87,13 +93,20 @@ merged_data <- merged_data[merged_data$total_exp>100 & merged_data$hours_worked_
 merged_data <- merged_data[merged_data$total_exp <= quantile(merged_data$total_exp,0.99,na.rm = TRUE) & merged_data$total_exp >= quantile(merged_data$total_exp,0.01,na.rm = TRUE),]
 
 
-merged_data['housing_exp_calc'] <- merged_data$major_appliances+merged_data$small_appliances + merged_data$maintainance_repairs+merged_data$house_furnishings_and_equip
+merged_data['housing_exp_calc'] <- merged_data$major_appliances+merged_data$small_appliances + merged_data$maintainance_repairs+merged_data$house_furnishings_and_equip+merged_data$mtg_principal_outlay
 
 merged_data['non_durable'] <- merged_data$food_exp+ merged_data$entertainment_exp + merged_data$utility_exp + merged_data$transport_outlays - merged_data$vehicle_purchase_outlay + merged_data$apperel_and_services_exp+merged_data$miscellaneous_exp 
 
 merged_data['durable'] <- merged_data$major_appliances + merged_data$small_appliances + merged_data$vehicle_purchase_outlay
 
 merged_data['services'] <- merged_data$education_exp + merged_data$domestic_services + merged_data$health_exp
+
+
+income_medians <- ddply(merged_data,.(state,interview_year),summarise,q1_income = quantile(income_class,0.25,na.rm=TRUE),median_income = median(income_class,na.rm=TRUE),q3_income = quantile(income_class,0.75,na.rm=TRUE))
+
+merged_data <- merge(merged_data,income_medians,by=c("state","interview_year"),all.x = TRUE)
+
+merged_data$mtg30us <- merged_data$mtg30us*100
 
 ```
 
@@ -107,7 +120,7 @@ stargazer(merged_data[, c("mpay_mtg","calc_mtg_pmt","non_durable","services","du
 ```{r balancing}
 formula_text <- "~0|org_state+interview_state|(mpay_mtg~mtg30us)|interview_year+CUID"
 
-variables <- c("log(income_class)","age_of_ref","family_size")
+variables <- c("log(income_class)","age_of_ref","family_size","log(mtg_amount)")
 i = 1
 felm_regs <- list()
 for(variable in variables) {
@@ -116,7 +129,40 @@ for(variable in variables) {
   i=i+1
 }
 
-stargazer(felm_regs,type = output.type,no.space = TRUE,column.labels = gsub("_","",variables))
+stargazer(felm_regs,type = output.type,no.space = TRUE,column.labels = gsub("_"," ",variables))
+```
+
+# Kernal Regression
+```{r kernal_reg}
+
+library(np)
+temp <- merged_data
+
+temp <- completeFun(temp,c("mtg30us","mpay_mtg","org_state","interview_state"))
+
+adj_mpay_mtg <- felm(mpay_mtg~0|factor(org_state)+factor(interview_state),data=temp)
+adj_mtg30us <- felm(mtg30us~0|factor(org_state)+factor(interview_state),data=temp)
+temp['resid_mpay_mtg'] <- adj_mpay_mtg$residuals
+temp['resid_mtg30us'] <- adj_mtg30us$residuals
+
+bw <- npregbw(formula=as.vector(temp$resid_mpay_mtg)~as.vector(temp$resid_mtg30us),bws=(max(temp$resid_mtg30us)-min(temp$resid_mtg30us))/10,bwtype="fixed",bandwidth.compute=F)
+
+model <- npreg(bws=bw,gradients = TRUE)
+plot.out <- plot(model, plot.errors.method="asymptotic",plot.errors.style="band",plot.behavior="data")
+y.eval <- fitted(plot.out$r1)
+x.eval <- plot.out$r1$eval[,1]
+y.se <- se(plot.out$r1)
+y.lower.ci <- y.eval+1.96*y.se[,1]
+y.upper.ci <- y.eval+1.96*y.se[,2]
+df <- as.data.frame(cbind(x.eval,y.eval,y.lower.ci,y.upper.ci))
+
+df <- melt(df,id="x.eval")
+
+g2 <- ggplot(df,aes(x=x.eval, y=value,colour=variable)) + geom_line(aes(linetype=variable), size=1) +scale_linetype_manual(values = c(1,2,2))+scale_colour_manual(values=c("black","gray40","gray40"))+ theme_bw()+ylab("FE adjusted mortgage-to-loan") + xlab("FE adjusted IV")+ labs(title = "")+ theme(legend.position="none")+scale_y_continuous(limits = c(-4e-4, 5e-4))
+g2
+
+
+
 ```
 
 
@@ -154,19 +200,19 @@ for(dep_var in dep_vars) {
 
   regs <- list()
   regs[[1]] <- felm(as.formula(paste(log_dep_var,"~",endo_var,"+",controls,"|0|",cluster_var,sep="")),data = reg_data)
-  regs[[2]] <- felm(as.formula(paste(endo_var,"~",instrument,"+",controls,"|0|",cluster_var,sep="")),data = reg_data)
+  regs[[2]] <- felm(as.formula(paste("I(",endo_var,"*1e5)~",instrument,"+",controls,"|0|",cluster_var,sep="")),data = reg_data)
   regs[[3]] <- felm(as.formula(paste(log_dep_var,"~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = reg_data)
   regs[[4]] <- felm(as.formula(paste(dep_var,"~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = reg_data)
-  regs[[5]] <- felm(as.formula(paste(dummy_dep_var,"~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = reg_data)
+  regs[[5]] <- felm(as.formula(paste(log_dep_var,"~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = reg_data[reg_data$income_class < reg_data$median_income,])
+  regs[[6]] <- felm(as.formula(paste(log_dep_var,"~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = reg_data[reg_data$income_class >= reg_data$median_income,])
   
-
   eval(parse(text=paste("print(summary(reg_data$",dep_var,"-1))",sep="")))
 
   
   stargazer(regs,type="text",dep.var.labels.include = FALSE,omit.stat = c("f","rsq","ser"),
-            column.labels = c("Log","First Stage","Log","Level","Dummy"),
+            column.labels = c("Log","First Stage","Log","Level","Log - Low Income", "Log - High Income"),
             add.lines = list(c("Cond. F","","",round(condfstat(regs[[3]])[[1]],2),round(condfstat(regs[[4]])[[1]],2)
-                               ,round(condfstat(regs[[5]])[[1]],2))),title = gsub("_"," ",dep_var))
+                               ,round(condfstat(regs[[5]])[[1]],2),round(condfstat(regs[[6]])[[1]],2))),title = gsub("_"," ",dep_var))
   
 }
 
@@ -182,7 +228,7 @@ cluster_var = "interview_year+state+CUID"
 controls <- "log(income_class)+family_size+I(age_of_ref^2)|org_state+interview_state"
 
 
-dep_vars <- c("food_exp","entertainment_exp","utility_exp","transport_outlays","apperel_and_services_exp","major_appliances","small_appliances","vehicle_purchase_outlay","education_exp","domestic_services","health_exp")
+dep_vars <- c("mtg_principal_outlay","food_away","food_exp","entertainment_exp","utility_exp","transport_outlays","apperel_and_services_exp","major_appliances","small_appliances","vehicle_purchase_outlay","education_exp","domestic_services","health_exp")
 
 
 for(dep_var in dep_vars) {
@@ -201,7 +247,7 @@ for(dep_var in dep_vars) {
 
   regs <- list()
   regs[[1]] <- felm(as.formula(paste(log_dep_var,"~",endo_var,"+",controls,"|0|",cluster_var,sep="")),data = reg_data)
-  regs[[2]] <- felm(as.formula(paste(endo_var,"~",instrument,"+",controls,"|0|",cluster_var,sep="")),data = reg_data)
+  regs[[2]] <- felm(as.formula(paste("I(",endo_var,"*1e5)~",instrument,"+",controls,"|0|",cluster_var,sep="")),data = reg_data)
   regs[[3]] <- felm(as.formula(paste(log_dep_var,"~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = reg_data)
   regs[[4]] <- felm(as.formula(paste(dep_var,"~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = reg_data)
   regs[[5]] <- felm(as.formula(paste(dummy_dep_var,"~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = reg_data)
