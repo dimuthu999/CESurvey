@@ -78,21 +78,9 @@ completeFun <- function(data, desiredCols) {
   return(data[completeVec, ])
 }
 
-merged_data <- readRDS(file="E:/CE Survey/Data/Processed/merged_data_Nov022017.rds") # file created by 10252017_kevin_comments.R
-
-merged_data <- merged_data[merged_data$interest_rate_cur==merged_data$interest_rate_org,]
-
-merged_data <- merged_data[!is.na(merged_data$NEWID.x),]
-
-merged_data['total_exp_less_mtg'] <- merged_data$total_exp - merged_data$mtg_pmt_calc_mor*3
+merged_data <- readRDS(file="E:/CE Survey/Data/Processed/merged_data_Nov032017.rds") # file created by 11012017_kevin_comments.R
 
 
-
-merged_data$income_class <- ifelse(merged_data$income_class==1,4000,
-                                   ifelse(merged_data$income_class==2,8000,
-                                          ifelse(merged_data$income_class==3,12000,
-                                                 ifelse(merged_data$income_class==4,17000,
-                                                        merged_data$income_class*10000-25000))))
 
 
 
@@ -113,13 +101,23 @@ merged_data <- merge(merged_data,income_medians,by=c("state","interview_year"),a
 
 merged_data$mtg30us <- merged_data$mtg30us*100
 
+merged_data <- completeFun(merged_data,c("family_income_after_tax","family_size","age_of_ref",
+                                  "interview_state","mpay_mtg","mtg30us","CUID","org_state","state"))
+t1 <- as.data.frame(table(merged_data$org_state))
+t2 <- as.data.frame(table(merged_data$interview_state))
 
+merged_data['org_state_int_state'] <- paste(merged_data$org_state,merged_data$interview_state)
+t3 <- as.data.frame(table(merged_data$org_state_int_state))
+
+merged_data <- merged_data[!merged_data$org_state %in% t1[t1$Freq==1,]$Var1,]
+merged_data <- merged_data[!merged_data$interview_state %in% t2[t2$Freq==1,]$Var1,]
+merged_data <- merged_data[!merged_data$org_state_int_state %in% t3[t3$Freq==1,]$Var1,]
 ```
 
 # Descriptives
 ```{r descs}
 
-stargazer(merged_data[, c("mpay_mtg","calc_mtg_pmt","non_durable","services","durable","org_year","interview_year","family_income_after_tax","family_size","age_of_ref","total_exp","total_exp_less_mtg","food_exp","all_major_outlays","entertainment_exp","vehicle_purchase_outlay","major_appliances","small_appliances","house_furnishings_and_equip","maintainance_repairs","utility_exp")], type = output.type, summary.stat = c("mean", "sd", "p25", "median", "p75", "n"),notes = "",digits = 4)
+stargazer(merged_data[, c("mpay_mtg","calc_mtg_pmt","non_durable","services","durable","org_year","interview_year","family_income_after_tax","family_size","age_of_ref","total_exp","food_exp","all_major_outlays","entertainment_exp","vehicle_purchase_outlay","major_appliances","small_appliances","house_furnishings_and_equip","maintainance_repairs","utility_exp")], type = output.type, summary.stat = c("mean", "sd", "p25", "median", "p75", "n"),notes = "",digits = 4)
 ```
 
 # Balancing Tests
@@ -179,20 +177,21 @@ Durable : Major appliances + small appliances + vehicle purchase outlays <br/>
 Services: Education + Domestic Services + Health <br/>
 housing_exp_calc : major_appliances+small_appliances + maintainance_repairs+house_furnishings_and_equip<br/>
 ```{r regs_main_cats}
+
 endo_var = "mpay_mtg"
 instrument = "mtg30us"
-cluster_var = "interview_year+state+CUID"
+cluster_var = "interview_year+CUID"
 
 controls <- "log(family_income_after_tax)+family_size+I(age_of_ref^2)|org_state+interview_state"
-
 
 
 dep_vars <- c("non_durable","durable","services","housing_exp_calc","total_exp")#,"food_exp","all_major_outlays","entertainment_exp","transport_outlays","vehicle_purchase_outlay","major_appliances","small_appliances","house_furnishings_and_equip","maintainance_repairs","utility_exp")
 
 
+
 for(dep_var in dep_vars) {
   cat(paste("\n\n\n*******************",dep_var,"*********************\n\n\nSummary Statistics\n"))
-  reg_data <- merged_data[is.finite(log(merged_data$family_income_after_tax)),]
+  reg_data <- merged_data[is.finite(log(merged_data$family_income_after_tax)) & !is.na(merged_data$state),]
   eval(parse(text=paste("reg_data$",dep_var," <- abs(reg_data$",dep_var,"+1)",sep="")))
   eval(parse(text=paste("reg_data$",dep_var," <- ifelse(is.na(reg_data$",dep_var,"),1,reg_data$",dep_var,")",sep="")))
   eval(parse(text=paste("reg_data['",dep_var,"_dummy'] <- ifelse(reg_data$",dep_var,">1,1,0)",sep="")))
@@ -209,8 +208,8 @@ for(dep_var in dep_vars) {
   regs[[2]] <- felm(as.formula(paste("I(",endo_var,"*1e5)~",instrument,"+",controls,"|0|",cluster_var,sep="")),data = reg_data)
   regs[[3]] <- felm(as.formula(paste(log_dep_var,"~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = reg_data)
   regs[[4]] <- felm(as.formula(paste(dep_var,"~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = reg_data)
-  regs[[5]] <- felm(as.formula(paste(log_dep_var,"~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = reg_data[reg_data$income_class < reg_data$median_income,])
-  regs[[6]] <- felm(as.formula(paste(log_dep_var,"~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = reg_data[reg_data$income_class >= reg_data$median_income,])
+  # regs[[5]] <- felm(as.formula(paste(log_dep_var,"~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = reg_data[reg_data$income_class < reg_data$median_income,])
+  # regs[[6]] <- felm(as.formula(paste(log_dep_var,"~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = reg_data[reg_data$income_class >= reg_data$median_income,])
   
   eval(parse(text=paste("print(summary(reg_data$",dep_var,"-1))",sep="")))
 
@@ -218,7 +217,7 @@ for(dep_var in dep_vars) {
   stargazer(regs,type="text",dep.var.labels.include = FALSE,omit.stat = c("f","rsq","ser"),
             column.labels = c("Log","First Stage","Log","Level","Log - Low Income", "Log - High Income"),
             add.lines = list(c("Cond. F","","",round(condfstat(regs[[3]])[[1]],2),round(condfstat(regs[[4]])[[1]],2)
-                               ,round(condfstat(regs[[5]])[[1]],2),round(condfstat(regs[[6]])[[1]],2))),title = gsub("_"," ",dep_var))
+                               )),title = gsub("_"," ",dep_var))
   
 }
 
@@ -229,7 +228,7 @@ for(dep_var in dep_vars) {
 ```{r regs_sub_cats}
 endo_var = "mpay_mtg"
 instrument = "mtg30us"
-cluster_var = "interview_year+state+CUID"
+cluster_var = "interview_year+CUID"
 
 controls <- "log(family_income_after_tax)+family_size+I(age_of_ref^2)|org_state+interview_state"
 
