@@ -1,0 +1,341 @@
+---
+title: "Mortgage Interest Rate and Consumption"
+output: 
+  html_document:
+    css: bodycss.css
+    fig_width: 8
+    font-family: Helvetica,Arial,sans-serif;
+    number_section: yes
+    toc: yes
+  pdf_document:
+    toc: yes
+  word_document:
+    toc: yes
+---
+
+<style type="text/css">
+body{ 
+      font-size: 15px;
+      font-family: Helvetica,Arial,sans-serif;
+      line-height: 200%;
+  }
+  
+.author {
+ font-size: 15px;
+ color: Black;
+ font-style: normal;
+ text-align: center;
+}
+
+
+.date { 
+ font-size: 15px;
+ color: Black;
+ font-style: normal;
+ text-align: center;
+}
+
+.title{
+  text-align: center;
+  font-size: 15px;
+ color: Black;
+ 
+}
+
+.toc-ignore{
+  text-align: center;
+  font-size: 15px;
+ color: Black;
+}
+
+.fluid-row{
+  text-align: center;
+  font-size: 15px;
+ color: Black;
+}
+
+</style>
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(warning=FALSE, message=FALSE,echo=FALSE)
+```
+
+```{r echo=FALSE}
+rm(list=ls())
+
+
+library(data.table)
+library(lubridate)
+library(lfe)
+library(plyr)
+library(stargazer)
+library(FinCal)
+library(ggplot2)
+output.type = "text"
+
+completeFun <- function(data, desiredCols) {
+  completeVec <- complete.cases(data[, desiredCols])
+  return(data[completeVec, ])
+}
+
+merged_data <- readRDS(file="E:/CE Survey/Data/Processed/merged_data_Nov302017_CQ.rds") # file created by 11012017_kevin_comments.R
+
+
+
+
+
+merged_data['housing_exp_calc'] <- merged_data$major_appliances+merged_data$small_appliances + merged_data$maintainance_repairs+merged_data$house_furnishings_and_equip+merged_data$mtg_principal_outlay
+
+merged_data['non_durable'] <- merged_data$food_exp+ merged_data$entertainment_exp + merged_data$utility_exp + merged_data$transport_outlays - merged_data$vehicle_purchase_outlay + merged_data$apperel_and_services_exp+merged_data$miscellaneous_exp 
+
+merged_data['durable'] <- merged_data$major_appliances + merged_data$small_appliances + merged_data$vehicle_purchase_outlay +merged_data$tv_radio_etc
+
+merged_data['services'] <- merged_data$education_exp + merged_data$domestic_services + merged_data$health_exp
+
+
+merged_data$family_income_after_tax <- merged_data$family_income_after_tax+1
+
+income_medians <- ddply(merged_data,.(state,interview_year),summarise,q1_income = quantile(family_income_after_tax,0.25,na.rm=TRUE),median_income = median(family_income_after_tax,na.rm=TRUE),q3_income = quantile(family_income_after_tax,0.75,na.rm=TRUE))
+
+merged_data <- merge(merged_data,income_medians,by=c("state","interview_year"),all.x = TRUE)
+
+merged_data$mtg30us <- merged_data$mtg30us*100
+
+merged_data <- completeFun(merged_data,c("family_income_after_tax","family_size","age_of_ref",
+                                  "interview_state","mpay_mtg","mtg30us","CUID","org_state","state"))
+t1 <- as.data.frame(table(merged_data$org_state))
+t2 <- as.data.frame(table(merged_data$interview_state))
+
+merged_data['org_state_int_state'] <- paste(merged_data$org_state,merged_data$interview_state)
+t3 <- as.data.frame(table(merged_data$org_state_int_state))
+
+merged_data <- merged_data[!merged_data$org_state %in% t1[t1$Freq==1,]$Var1,]
+merged_data <- merged_data[!merged_data$interview_state %in% t2[t2$Freq==1,]$Var1,]
+merged_data <- merged_data[!merged_data$org_state_int_state %in% t3[t3$Freq==1,]$Var1,]
+
+merged_data['principal_reduction'] <- merged_data$mtg_pmt_calc_mor*3 - (as.numeric(merged_data$QADINT1X) + as.numeric(merged_data$QADINT2X) + as.numeric(merged_data$QADINT3X) + as.numeric(merged_data$QPRINM1X) + as.numeric(merged_data$QPRINM2X) + as.numeric(merged_data$QPRINM3X))
+merged_data$principal_reduction <- ifelse(merged_data$principal_reduction<0,0,merged_data$principal_reduction)
+
+
+merged_data$non_durable <- ifelse(merged_data$int_month==2 | merged_data$int_month==5 | merged_data$int_month==8 | merged_data$int_month==11,merged_data$non_durable*3, merged_data$non_durable*3/2)
+merged_data$durable <- ifelse(merged_data$int_month==2 | merged_data$int_month==5 | merged_data$int_month==8 | merged_data$int_month==11,merged_data$durable*3, merged_data$durable*3/2)
+merged_data$services <- ifelse(merged_data$int_month==2 | merged_data$int_month==5 | merged_data$int_month==8 | merged_data$int_month==11,merged_data$services*3, merged_data$services*3/2)
+merged_data$total_exp <- ifelse(merged_data$int_month==2 | merged_data$int_month==5 | merged_data$int_month==8 | merged_data$int_month==11,merged_data$total_exp*3, merged_data$total_exp*3/2)
+# merged_data$mtg_pmt_reported_mor <- ifelse(merged_data$int_month==2 | merged_data$int_month==5 | merged_data$int_month==8 | merged_data$int_month==11,merged_data$mtg_pmt_reported_mor*3, merged_data$mtg_pmt_reported_mor*3/2)
+merged_data['total_mtg_pmt'] <- merged_data$mtg_pmt_reported_mor*3
+```
+
+# Descriptives
+```{r descs}
+
+stargazer(merged_data[, c("interest_rate_cur","mtg_amount","non_durable","durable","services","total_mtg_pmt","total_exp","mtg_principal_outlay","org_year","interview_year","family_income_after_tax","family_size","age_of_ref")], type = output.type, summary.stat = c("mean", "sd", "p25", "median", "p75", "n"),notes = "",digits = 4)
+```
+```{r include=FALSE}
+stargazer(merged_data[, c("total_exp","mtg_amount","food_exp","entertainment_exp","utility_exp","transport_outlays","apperel_and_services_exp","miscellaneous_exp","major_appliances","small_appliances","tv_radio_etc","vehicle_purchase_outlay","education_exp","domestic_services","health_exp","mtg_principal_outlay","maintainance_repairs","house_furnishings_and_equip","pets_toys","life_and_personal_insurance")], type = output.type, summary.stat = c("mean", "sd", "p25", "median", "p75", "n"),notes = "",digits = 4)
+```
+
+# Balancing Tests
+```{r balancing}
+formula_text <- "~0|org_state+interview_state|(interest_rate_org~mtg30us)|interview_year+CUID"
+all_interest_data <- readRDS(file="E:/CE Survey/Data/Processed/merged_data_all_interestrate_Nov142017.rds")
+all_interest_data <- all_interest_data[all_interest_data$org_int_not_eq_cur==1 | all_interest_data$NEWID.x %in% unique(merged_data$NEWID.x),]
+
+variables <- c("log(family_income_after_tax)","age_of_ref","family_size","log(mtg_amount)")
+i = 1
+felm_regs <- list()
+for(variable in variables) {
+  # print(i)
+  felm_regs[[i]] <- felm(as.formula(paste(variable,formula_text,sep="")),data=merged_data[is.finite(log(merged_data$family_income_after_tax)),])
+  i=i+1
+}
+felm_regs[[i]] <- felm(as.formula(paste("org_int_not_eq_cur",formula_text,sep="")),data=all_interest_data[is.finite(log(all_interest_data$family_income_after_tax)),])
+
+stargazer(felm_regs,type = output.type,no.space = TRUE,column.labels = gsub("_"," ",c(variables,"org_int_not_eq_cur")),dep.var.labels.include = FALSE)
+```
+
+# Kernal Regression
+```{r kernal_reg}
+
+library(np)
+temp <- merged_data
+
+temp <- completeFun(temp,c("mtg30us","interest_rate_org","org_state","interview_state"))
+
+adj_mpay_mtg <- felm(interest_rate_org~0|factor(org_state)+factor(interview_state),data=temp)
+adj_mtg30us <- felm(mtg30us~0|factor(org_state)+factor(interview_state),data=temp)
+temp['resid_mpay_mtg'] <- adj_mpay_mtg$residuals
+temp['resid_mtg30us'] <- adj_mtg30us$residuals
+
+bw <- npregbw(formula=as.vector(temp$resid_mpay_mtg)~as.vector(temp$resid_mtg30us),bws=(max(temp$resid_mtg30us)-min(temp$resid_mtg30us))/10,bwtype="fixed",bandwidth.compute=F)
+
+model <- npreg(bws=bw,gradients = TRUE)
+plot.out <- plot(model, plot.errors.method="asymptotic",plot.errors.style="band",plot.behavior="data")
+y.eval <- fitted(plot.out$r1)
+x.eval <- plot.out$r1$eval[,1]
+y.se <- se(plot.out$r1)
+y.lower.ci <- y.eval+1.96*y.se[,1]
+y.upper.ci <- y.eval+1.96*y.se[,2]
+df <- as.data.frame(cbind(x.eval,y.eval,y.lower.ci,y.upper.ci))
+
+df <- melt(df,id="x.eval")
+
+g2 <- ggplot(df,aes(x=x.eval, y=value,colour=variable)) + geom_line(aes(linetype=variable), size=1) +scale_linetype_manual(values = c(1,2,2))+scale_colour_manual(values=c("black","gray40","gray40"))+ theme_bw()+ylab("FE adjusted Interest Rate") + xlab("FE adjusted IV")+ labs(title = "")+ theme(legend.position="none")
+g2
+
+
+
+```
+
+
+
+
+# Regressions for Paper
+Columns
+1 - First Stage <br/>
+2 - OLS - non_durable<br/>
+3 - IV - non_durable<br/>
+4 - OLS - durable<br/>
+5 - IV - durable<br/>
+6 - OLS - services<br/>
+7 - IV - services<br/>
+8 - OLS - principal_reduction<br/>
+9 - IV - principal_reduction<br/>
+10 - OLS - total_exp<br/>
+11 - IV - total_exp<br/>
+```{r regs_for_paper}
+
+reg_data <- merged_data[is.finite(log(merged_data$family_income_after_tax)) & !is.na(merged_data$state),]
+
+
+endo_var = "interest_rate_cur"
+instrument = "mtg30us"
+cluster_var = "CUID+interview_year"
+
+controls <- "log(family_income_after_tax)+family_size+I(age_of_ref^2)|org_state+interview_state"
+
+dep_vars <- c("non_durable","durable","services","principal_reduction","total_exp")
+regs <- list()
+
+
+regs[[1]] <- felm(as.formula(paste("I(",endo_var,"*1e5)~",instrument,"+",controls,"|0|",cluster_var,sep="")),data = reg_data)
+i=2
+for(dep_var in dep_vars) {
+  
+  reg_data <- merged_data[is.finite(log(merged_data$family_income_after_tax)) & !is.na(merged_data$state),]
+  eval(parse(text=paste("reg_data$",dep_var," <- abs(reg_data$",dep_var,"+1)",sep="")))
+  eval(parse(text=paste("reg_data$",dep_var," <- ifelse(is.na(reg_data$",dep_var,"),1,reg_data$",dep_var,")",sep="")))
+  
+  
+  log_dep_var = paste("log(",dep_var,")",sep="")
+  regs[[i]] <- felm(as.formula(paste(log_dep_var,"~",endo_var,"+",controls,"|0|",cluster_var,sep="")),data = reg_data)
+  i=i+1
+  regs[[i]] <- felm(as.formula(paste(log_dep_var,"~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = reg_data)
+  i=i+1
+  
+}
+
+stargazer(regs,type="text",dep.var.labels.include = FALSE,add.lines = list(c("Cond. F","","",round(condfstat(regs[[3]])[[1]],2),"",round(condfstat(regs[[5]])[[1]],2),""
+                               ,round(condfstat(regs[[7]])[[1]],2),"",round(condfstat(regs[[9]])[[1]],2),"",round(condfstat(regs[[11]])[[1]],2))))
+
+```
+
+# Consumption Regressions - Main Categories
+
+Non-durable: food + entertainment + utility + transport + apperal <br/>
+Durable : Major appliances + small appliances + vehicle purchase outlays <br/>
+Services: Education + Domestic Services + Health <br/>
+housing_exp_calc : major_appliances+small_appliances + maintainance_repairs+house_furnishings_and_equip<br/>
+```{r regs_main_cats,include=FALSE}
+
+endo_var = "interest_rate_cur"
+instrument = "mtg30us"
+cluster_var = "interview_year+CUID"
+
+controls <- "log(family_income_after_tax)+family_size+I(age_of_ref^2)|org_state+interview_state"
+
+
+dep_vars <- c("non_durable","durable","services","housing_exp_calc","total_exp")#,"food_exp","all_major_outlays","entertainment_exp","transport_outlays","vehicle_purchase_outlay","major_appliances","small_appliances","house_furnishings_and_equip","maintainance_repairs","utility_exp")
+
+
+
+for(dep_var in dep_vars) {
+  cat(paste("\n\n\n*******************",dep_var,"*********************\n\n\nSummary Statistics\n"))
+  reg_data <- merged_data[is.finite(log(merged_data$family_income_after_tax)) & !is.na(merged_data$state),]
+  eval(parse(text=paste("reg_data$",dep_var," <- abs(reg_data$",dep_var,"+1)",sep="")))
+  eval(parse(text=paste("reg_data$",dep_var," <- ifelse(is.na(reg_data$",dep_var,"),1,reg_data$",dep_var,")",sep="")))
+  eval(parse(text=paste("reg_data['",dep_var,"_dummy'] <- ifelse(reg_data$",dep_var,">1,1,0)",sep="")))
+  
+  log_dep_var = paste("log(",dep_var,")",sep="")
+  dummy_dep_var = paste(dep_var,"_dummy",sep="")
+  
+  if(dep_var %in% c("total_exp_less_mtg")) {
+    eval(parse(text=paste("reg_data <- reg_data[reg_data$",dep_var,">1,]",sep="")))
+  }
+
+  regs <- list()
+  regs[[1]] <- felm(as.formula(paste(log_dep_var,"~",endo_var,"+",controls,"|0|",cluster_var,sep="")),data = reg_data)
+  regs[[2]] <- felm(as.formula(paste("I(",endo_var,"*1e5)~",instrument,"+",controls,"|0|",cluster_var,sep="")),data = reg_data)
+  regs[[3]] <- felm(as.formula(paste(log_dep_var,"~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = reg_data)
+  regs[[4]] <- felm(as.formula(paste(dep_var,"~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = reg_data)
+  # regs[[5]] <- felm(as.formula(paste(log_dep_var,"~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = reg_data[reg_data$income_class < reg_data$median_income,])
+  # regs[[6]] <- felm(as.formula(paste(log_dep_var,"~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = reg_data[reg_data$income_class >= reg_data$median_income,])
+  
+  eval(parse(text=paste("print(summary(reg_data$",dep_var,"-1))",sep="")))
+
+  
+  stargazer(regs,type="text",dep.var.labels.include = FALSE,omit.stat = c("f","rsq","ser"),
+            column.labels = c("Log","First Stage","Log","Level","Log - Low Income", "Log - High Income"),
+            add.lines = list(c("Cond. F","","",round(condfstat(regs[[3]])[[1]],2),round(condfstat(regs[[4]])[[1]],2)
+                               )),title = gsub("_"," ",dep_var))
+  
+}
+
+```
+
+
+# Consumption Regressions - Sub Categories
+```{r regs_sub_cats,include=FALSE}
+endo_var = "interest_rate_cur"
+instrument = "mtg30us"
+cluster_var = "interview_year+CUID"
+
+controls <- "log(family_income_after_tax)+family_size+I(age_of_ref^2)|org_state+interview_state"
+
+
+dep_vars <- c("mtg_principal_outlay","all_major_outlays","food_away","food_exp","entertainment_exp","utility_exp","transport_outlays","apperel_and_services_exp","major_appliances","small_appliances","vehicle_purchase_outlay","education_exp","domestic_services","health_exp","furniture_exp","household_operations","life_and_personal_insurance","pets_toys")
+
+
+for(dep_var in dep_vars) {
+  cat(paste("\n\n\n*******************",dep_var,"*********************\n\n\nSummary Statistics\n"))
+  reg_data <- merged_data
+  eval(parse(text=paste("reg_data$",dep_var," <- abs(reg_data$",dep_var,"+1)",sep="")))
+  eval(parse(text=paste("reg_data$",dep_var," <- ifelse(is.na(reg_data$",dep_var,"),1,reg_data$",dep_var,")",sep="")))
+  eval(parse(text=paste("reg_data['",dep_var,"_dummy'] <- ifelse(reg_data$",dep_var,">1,1,0)",sep="")))
+  
+  log_dep_var = paste("log(",dep_var,")",sep="")
+  dummy_dep_var = paste(dep_var,"_dummy",sep="")
+  
+  if(dep_var %in% c("total_exp_less_mtg")) {
+    eval(parse(text=paste("reg_data <- reg_data[reg_data$",dep_var,">1,]",sep="")))
+  }
+
+  regs <- list()
+  regs[[1]] <- felm(as.formula(paste(log_dep_var,"~",endo_var,"+",controls,"|0|",cluster_var,sep="")),data = reg_data)
+  regs[[2]] <- felm(as.formula(paste("I(",endo_var,"*1e5)~",instrument,"+",controls,"|0|",cluster_var,sep="")),data = reg_data)
+  regs[[3]] <- felm(as.formula(paste(log_dep_var,"~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = reg_data)
+  regs[[4]] <- felm(as.formula(paste(dep_var,"~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = reg_data)
+  regs[[5]] <- felm(as.formula(paste(dummy_dep_var,"~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = reg_data)
+  
+
+  eval(parse(text=paste("print(summary(reg_data$",dep_var,"-1))",sep="")))
+
+  
+  stargazer(regs,type="text",dep.var.labels.include = FALSE,omit.stat = c("f","rsq","ser"),
+            column.labels = c("Log","First Stage","Log","Level","Dummy"),
+            add.lines = list(c("Cond. F","","",round(condfstat(regs[[3]])[[1]],2),round(condfstat(regs[[4]])[[1]],2)
+                               ,round(condfstat(regs[[5]])[[1]],2))),title = gsub("_"," ",dep_var))
+  
+}
+
+```
+
