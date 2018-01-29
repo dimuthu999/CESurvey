@@ -125,12 +125,13 @@ merged_data$total_exp <- ifelse(merged_data$int_month==2 | merged_data$int_month
 merged_data['total_mtg_pmt'] <- merged_data$mtg_pmt_reported_mor*3
 
 merged_data$interest_rate_cur <- merged_data$interest_rate_cur*100
+merged_data$principal_reduction <- ifelse(is.na(merged_data$principal_reduction),0,merged_data$principal_reduction)
 ```
 
 # Descriptives
 ```{r descs}
 
-stargazer(merged_data[, c("interest_rate_cur","mtg30us","mtg_amount","non_durable","durable","services","total_mtg_pmt","total_exp","mtg_principal_outlay","org_year","interview_year","family_income_after_tax","family_size","age_of_ref")], type = output.type, summary.stat = c("mean", "sd", "p25", "median", "p75", "n"),notes = "",digits = 4)
+stargazer(merged_data[, c("interest_rate_cur","mtg30us","mtg_amount","non_durable","durable","services","total_mtg_pmt","total_exp","principal_reduction","org_year","interview_year","family_income_after_tax","family_size","age_of_ref")], type = output.type, summary.stat = c("mean", "sd", "p25", "median", "p75", "n"),notes = "",digits = 4)
 ```
 ```{r include=FALSE}
 stargazer(merged_data[, c("total_exp","mtg_amount","food_exp","entertainment_exp","utility_exp","transport_outlays","apperel_and_services_exp","miscellaneous_exp","major_appliances","small_appliances","tv_radio_etc","vehicle_purchase_outlay","education_exp","domestic_services","health_exp","mtg_principal_outlay","maintainance_repairs","house_furnishings_and_equip","pets_toys","life_and_personal_insurance")], type = output.type, summary.stat = c("mean", "sd", "p25", "median", "p75", "n"),notes = "",digits = 4)
@@ -138,7 +139,7 @@ stargazer(merged_data[, c("total_exp","mtg_amount","food_exp","entertainment_exp
 
 # Balancing Tests
 ```{r balancing}
-formula_text <- "~0|org_state+interview_state|(interest_rate_org~mtg30us)|interview_year+CUID"
+formula_text <- "~0|org_state+interview_state|(interest_rate_cur~mtg30us)|interview_year+CUID"
 all_interest_data <- readRDS(file="E:/CE Survey/Data/Processed/merged_data_all_interestrate_Nov142017.rds")
 all_interest_data <- all_interest_data[all_interest_data$org_int_not_eq_cur==1 | all_interest_data$NEWID.x %in% unique(merged_data$NEWID.x),]
 
