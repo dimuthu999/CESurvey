@@ -124,7 +124,7 @@ merged_data$total_exp <- ifelse(merged_data$int_month==2 | merged_data$int_month
 # merged_data$mtg_pmt_reported_mor <- ifelse(merged_data$int_month==2 | merged_data$int_month==5 | merged_data$int_month==8 | merged_data$int_month==11,merged_data$mtg_pmt_reported_mor*3, merged_data$mtg_pmt_reported_mor*3/2)
 merged_data['total_mtg_pmt'] <- merged_data$mtg_pmt_reported_mor*3
 
-merged_data$mtg30us <- merged_data$mtg30us/100
+merged_data$interest_rate_cur <- merged_data$interest_rate_cur*100
 ```
 
 # Descriptives
@@ -202,6 +202,8 @@ Columns
 7 - IV - services<br/>
 8 - OLS - principal_reduction<br/>
 9 - IV - principal_reduction<br/>
+8 - OLS - Mortgage Payment<br/>
+9 - IV - Mortgage Payment<br/>
 10 - OLS - total_exp<br/>
 11 - IV - total_exp<br/>
 ```{r regs_for_paper}
@@ -215,7 +217,7 @@ cluster_var = "CUID+interview_year"
 
 controls <- "log(family_income_after_tax)+family_size+I(age_of_ref^2)|org_state+interview_state"
 
-dep_vars <- c("non_durable","durable","services","principal_reduction","total_exp")
+dep_vars <- c("non_durable","durable","services","principal_reduction","total_mtg_pmt","total_exp")
 regs <- list()
 
 
@@ -240,104 +242,3 @@ stargazer(regs,type="text",dep.var.labels.include = FALSE,add.lines = list(c("Co
                                ,round(condfstat(regs[[7]])[[1]],2),"",round(condfstat(regs[[9]])[[1]],2),"",round(condfstat(regs[[11]])[[1]],2))))
 
 ```
-
-# Consumption Regressions - Main Categories
-
-Non-durable: food + entertainment + utility + transport + apperal <br/>
-Durable : Major appliances + small appliances + vehicle purchase outlays <br/>
-Services: Education + Domestic Services + Health <br/>
-housing_exp_calc : major_appliances+small_appliances + maintainance_repairs+house_furnishings_and_equip<br/>
-```{r regs_main_cats,include=FALSE}
-
-endo_var = "interest_rate_cur"
-instrument = "mtg30us"
-cluster_var = "interview_year+CUID"
-
-controls <- "log(family_income_after_tax)+family_size+I(age_of_ref^2)|org_state+interview_state"
-
-
-dep_vars <- c("non_durable","durable","services","housing_exp_calc","total_exp")#,"food_exp","all_major_outlays","entertainment_exp","transport_outlays","vehicle_purchase_outlay","major_appliances","small_appliances","house_furnishings_and_equip","maintainance_repairs","utility_exp")
-
-
-
-for(dep_var in dep_vars) {
-  cat(paste("\n\n\n*******************",dep_var,"*********************\n\n\nSummary Statistics\n"))
-  reg_data <- merged_data[is.finite(log(merged_data$family_income_after_tax)) & !is.na(merged_data$state),]
-  eval(parse(text=paste("reg_data$",dep_var," <- abs(reg_data$",dep_var,"+1)",sep="")))
-  eval(parse(text=paste("reg_data$",dep_var," <- ifelse(is.na(reg_data$",dep_var,"),1,reg_data$",dep_var,")",sep="")))
-  eval(parse(text=paste("reg_data['",dep_var,"_dummy'] <- ifelse(reg_data$",dep_var,">1,1,0)",sep="")))
-  
-  log_dep_var = paste("log(",dep_var,")",sep="")
-  dummy_dep_var = paste(dep_var,"_dummy",sep="")
-  
-  if(dep_var %in% c("total_exp_less_mtg")) {
-    eval(parse(text=paste("reg_data <- reg_data[reg_data$",dep_var,">1,]",sep="")))
-  }
-
-  regs <- list()
-  regs[[1]] <- felm(as.formula(paste(log_dep_var,"~",endo_var,"+",controls,"|0|",cluster_var,sep="")),data = reg_data)
-  regs[[2]] <- felm(as.formula(paste("I(",endo_var,"*1e5)~",instrument,"+",controls,"|0|",cluster_var,sep="")),data = reg_data)
-  regs[[3]] <- felm(as.formula(paste(log_dep_var,"~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = reg_data)
-  regs[[4]] <- felm(as.formula(paste(dep_var,"~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = reg_data)
-  # regs[[5]] <- felm(as.formula(paste(log_dep_var,"~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = reg_data[reg_data$income_class < reg_data$median_income,])
-  # regs[[6]] <- felm(as.formula(paste(log_dep_var,"~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = reg_data[reg_data$income_class >= reg_data$median_income,])
-  
-  eval(parse(text=paste("print(summary(reg_data$",dep_var,"-1))",sep="")))
-
-  
-  stargazer(regs,type="text",dep.var.labels.include = FALSE,omit.stat = c("f","rsq","ser"),
-            column.labels = c("Log","First Stage","Log","Level","Log - Low Income", "Log - High Income"),
-            add.lines = list(c("Cond. F","","",round(condfstat(regs[[3]])[[1]],2),round(condfstat(regs[[4]])[[1]],2)
-                               )),title = gsub("_"," ",dep_var))
-  
-}
-
-```
-
-
-# Consumption Regressions - Sub Categories
-```{r regs_sub_cats,include=FALSE}
-endo_var = "interest_rate_cur"
-instrument = "mtg30us"
-cluster_var = "interview_year+CUID"
-
-controls <- "log(family_income_after_tax)+family_size+I(age_of_ref^2)|org_state+interview_state"
-
-
-dep_vars <- c("mtg_principal_outlay","all_major_outlays","food_away","food_exp","entertainment_exp","utility_exp","transport_outlays","apperel_and_services_exp","major_appliances","small_appliances","vehicle_purchase_outlay","education_exp","domestic_services","health_exp","furniture_exp","household_operations","life_and_personal_insurance","pets_toys")
-
-
-for(dep_var in dep_vars) {
-  cat(paste("\n\n\n*******************",dep_var,"*********************\n\n\nSummary Statistics\n"))
-  reg_data <- merged_data
-  eval(parse(text=paste("reg_data$",dep_var," <- abs(reg_data$",dep_var,"+1)",sep="")))
-  eval(parse(text=paste("reg_data$",dep_var," <- ifelse(is.na(reg_data$",dep_var,"),1,reg_data$",dep_var,")",sep="")))
-  eval(parse(text=paste("reg_data['",dep_var,"_dummy'] <- ifelse(reg_data$",dep_var,">1,1,0)",sep="")))
-  
-  log_dep_var = paste("log(",dep_var,")",sep="")
-  dummy_dep_var = paste(dep_var,"_dummy",sep="")
-  
-  if(dep_var %in% c("total_exp_less_mtg")) {
-    eval(parse(text=paste("reg_data <- reg_data[reg_data$",dep_var,">1,]",sep="")))
-  }
-
-  regs <- list()
-  regs[[1]] <- felm(as.formula(paste(log_dep_var,"~",endo_var,"+",controls,"|0|",cluster_var,sep="")),data = reg_data)
-  regs[[2]] <- felm(as.formula(paste("I(",endo_var,"*1e5)~",instrument,"+",controls,"|0|",cluster_var,sep="")),data = reg_data)
-  regs[[3]] <- felm(as.formula(paste(log_dep_var,"~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = reg_data)
-  regs[[4]] <- felm(as.formula(paste(dep_var,"~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = reg_data)
-  regs[[5]] <- felm(as.formula(paste(dummy_dep_var,"~",controls,"|(",endo_var,"~",instrument,")|",cluster_var,sep="")),data = reg_data)
-  
-
-  eval(parse(text=paste("print(summary(reg_data$",dep_var,"-1))",sep="")))
-
-  
-  stargazer(regs,type="text",dep.var.labels.include = FALSE,omit.stat = c("f","rsq","ser"),
-            column.labels = c("Log","First Stage","Log","Level","Dummy"),
-            add.lines = list(c("Cond. F","","",round(condfstat(regs[[3]])[[1]],2),round(condfstat(regs[[4]])[[1]],2)
-                               ,round(condfstat(regs[[5]])[[1]],2))),title = gsub("_"," ",dep_var))
-  
-}
-
-```
-
