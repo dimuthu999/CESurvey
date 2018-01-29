@@ -138,7 +138,7 @@ stargazer(merged_data[, c("total_exp","mtg_amount","food_exp","entertainment_exp
 
 # Balancing Tests
 ```{r balancing}
-formula_text <- "~0|org_state+interview_state|(interest_rate_org~mtg30us)|interview_year+CUID"
+formula_text <- "~0|org_state+interview_state|(interest_rate_cur~mtg30us)|interview_year+CUID"
 all_interest_data <- readRDS(file="E:/CE Survey/Data/Processed/merged_data_all_interestrate_Nov142017.rds")
 all_interest_data <- all_interest_data[all_interest_data$org_int_not_eq_cur==1 | all_interest_data$NEWID.x %in% unique(merged_data$NEWID.x),]
 
